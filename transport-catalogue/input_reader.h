@@ -1,24 +1,16 @@
 #pragma once
+
+#include <iostream>
+#include <string>
+
 #include "transport_catalogue.h"
- 
-namespace transport_catalogue {
-namespace detail {  
-namespace stop {
-    Stop parse_stop(const std::string& str);
+
+namespace catalog::input_utils {
+
+ToStopsRoutes DistBetStops(std::string_view text);
+
+std::pair<catalog::Stop, bool> InputBusStop(const std::string& text);
+catalog::Bus InputBusRoute(std::string_view text);
+void TransportRequest(std::istream& input_stream);
     
-}//end namespace stop
-    
-namespace distance {
-    std::vector<Distance> parse_distances(const std::string& str, TransportCatalogue& catalogue);
-    
-}//end namespace distance
-    
-namespace bus {
-    Bus parse_bus(std::string_view str, TransportCatalogue& catalogue);
-    
-}//end namespace bus
- 
-void fill_catalogue(std::istream& input, TransportCatalogue& catalogue);
- 
-}//end namespace detail 
-}//end namespace transport_catalogue
+}  // namespace catalog::input_utils
