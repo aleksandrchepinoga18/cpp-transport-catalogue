@@ -1,146 +1,127 @@
 #include "input_reader.h"
 #include "stat_reader.h"
-#include <algorithm>
- 
-namespace transport_catalogue {
-namespace detail {
-namespace stop {
-    
-Stop parse_stop(const std::string& str) {
-    auto twopoint_pos = str.find(':');
-    auto comma_pos = str.find(',');
-    auto entry_length = 5;
-    auto distance = 2;
-    Stop stop;
- 
-    stop.name = str.substr(entry_length, 
-                             twopoint_pos - entry_length);
-    stop.latitude = stod(str.substr(twopoint_pos + distance, 
-                                      comma_pos - twopoint_pos - distance));
-    stop.longitude = stod(str.substr(comma_pos + distance));
-    
-    return stop;
-}
-    
-}//end namespace stop
-    
-namespace distance {
-    
-std::vector<Distance> parse_distances(const std::string& str, TransportCatalogue& catalogue) {
-    std::vector<Distance> distances;
-    auto entry_length = 5;
-    auto twopoint_pos = str.find(':');
-    auto space = 2;
-    
-    std::string str_copy = str;
-    std::string name = str_copy.substr(entry_length, 
-                                   twopoint_pos - entry_length);
-    str_copy = str_copy.substr(str_copy.find(',') + 1);
-    str_copy = str_copy.substr(str_copy.find(',') + space);
- 
-    while(str_copy.find(',') != std::string::npos){                    
-        int distance = stoi(str_copy.substr(0, str_copy.find('m')));
-        std::string stop_dist_name = str_copy.substr(str_copy.find('m') + entry_length);
-        stop_dist_name = stop_dist_name.substr(0, stop_dist_name.find(','));
-        distances.push_back({catalogue.get_stop(name), 
-                              catalogue.get_stop(stop_dist_name), distance});
-        str_copy = str_copy.substr(str_copy.find(',') + space);
+
+#include <cassert>
+#include <regex>
+
+namespace catalog::input_utils {
+
+using namespace std::literals;
+using namespace catalog;
+using namespace output_utils;
+
+//ввод остановки х - ширина и долгота, расст до ост 1, расст. до ост 2
+ToStopsRoutes DistBetStops(std::string_view text) {
+        ToStopsRoutes result;
+    size_t start = text.find(',');
+    start = text.find(',', start + 1) + 2;       //  + 2  =>>  (" "sv).size();
+    size_t end = start;
+
+    while (start != std::string_view::npos) {
+        end = text.find("m", start);
+        int distance = std::stoi(std::string(text.substr(start, end - start)));
+
+        start = end + 5;                 //("m to "sv).size();
+        end = text.find(",", start);
+
+        std::string_view stop_to = text.substr(start, end - start);
+        result.emplace_back(stop_to, distance);
+
+        start = (end == std::string::npos) ? end : end + 2;
     }
-    std::string last_name = str_copy.substr(str_copy.find('m') + entry_length);
-    int distance = stoi(str_copy.substr(0, str_copy.find('m')));
-    distances.push_back({catalogue.get_stop(name), catalogue.get_stop(last_name), distance});
-    
-    return distances;
+    return result;
+}
+
+// ==============ввод широты и долготы / ввод с инфой по остановке ширина и долгота до остановки 
+std::pair<Stop, bool> InputBusStop(const std::string& text) {
+        Stop stop;
+    size_t stop_begin = 5; 
+    size_t stop_end = text.find(": ", stop_begin);
+    stop.name = text.substr(stop_begin, stop_end - stop_begin);
+
+    size_t latitude_begin = stop_end + 2;  
+    size_t latitude_end = text.find(",", latitude_begin);
+    stop.point.lat = std::stod(text.substr(latitude_begin, latitude_end - latitude_begin));
+
+    size_t longitude_begin = latitude_end + 2;  
+    size_t longitude_end = text.find(",", longitude_begin);
+    stop.point.lng = std::stod(text.substr(longitude_begin, longitude_end - longitude_begin));
+
+    bool has_stops_info = (longitude_end != std::string::npos);
+    return {std::move(stop), has_stops_info};
 }
     
-}//end namespace distance
-    
-namespace bus {
-    
-Bus parse_bus(std::string_view str, TransportCatalogue& catalogue) {
-    auto entry_length = 4;
-    auto distance = 2;
-    auto twopoint_pos = str.find(':');
-    Bus bus;
-    bus.name = str.substr(entry_length, 
-                           twopoint_pos - entry_length);
- 
-    str = str.substr(twopoint_pos + distance);
- 
-    auto more_pos = str.find('>');
-    if (more_pos == std::string_view::npos) {
-        auto tire_pos = str.find('-');
- 
-        while (tire_pos != std::string_view::npos) {
-            bus.stops.push_back(catalogue.get_stop(str.substr(0, tire_pos - 1)));
- 
-            str = str.substr(tire_pos + distance);
-            tire_pos = str.find('-');
-        }
- 
-        bus.stops.push_back(catalogue.get_stop(str.substr(0, tire_pos - 1)));
-        size_t size = bus.stops.size() - 1;
- 
-        for (size_t i = size; i > 0; i--) {
-            bus.stops.push_back(bus.stops[i-1]);
-        }
- 
-    } else {
-        while (more_pos != std::string_view::npos) {
-            bus.stops.push_back(catalogue.get_stop(str.substr(0, more_pos - 1)));
- 
-            str = str.substr(more_pos + distance);
-            more_pos = str.find('>');
-        }
- 
-        bus.stops.push_back(catalogue.get_stop(str.substr(0, more_pos - 1)));
+//=============ввод кругового и двустороннего маршрута (1-2-3 остановки )
+Bus InputBusRoute(std::string_view text) {
+        Bus result;
+    size_t bus_start = text.find(' ') + 1;  
+    size_t bus_end = text.find(": "sv, bus_start);
+    result.number = text.substr(bus_start, bus_end - bus_start);
+
+    result.type = (text[text.find_first_of("->")] == '>') ? RouteType::CIRCLE : RouteType::TWO_DIRECTIONAL;
+    std::string_view razdelitel_stops = (result.type == RouteType::CIRCLE) ? " > " : " - ";
+
+    size_t stop_begin = bus_end + 2;   
+    while (stop_begin <= text.length()) {
+        size_t stop_end = text.find(razdelitel_stops, stop_begin);
+
+        result.stop_names.push_back(text.substr(stop_begin, stop_end - stop_begin));
+        stop_begin = (stop_end == std::string_view::npos) ? stop_end : stop_end + razdelitel_stops.size();
     }
-    
-    return bus;
+            result.unique_stops = {result.stop_names.begin(), result.stop_names.end()};
+        return result;
 }
-    
-}//end namespace bus
-    
-void fill_catalogue(std::istream& input, TransportCatalogue& catalogue) {
- 
-    std::string count;
-    std::getline(input, count);
- 
-    if (count != "") {
-        std::string str;
-        std::vector<std::string> buses;
-        std::vector<std::string> stops;
-        int amount = stoi(count);
-        auto bus_distance = 3;
- 
-        for (int i = 0; i < amount; ++i) {
-            std::getline(input, str);
- 
-            if (str != "") {
-                auto space_pos = str.find_first_not_of(' ');
-                str = str.substr(space_pos);
- 
-                if (str.substr(0, bus_distance) != "Bus") {
-                    stops.push_back(str);
-                } else {
-                    buses.push_back(str);
-                }
+
+void TransportRequest(std::istream& input_stream) {
+    TransportCatalogue catalogue;
+
+    int queries_count{0};
+    input_stream >> queries_count;
+    input_stream.get();
+
+    std::vector<std::string> bus_queries;
+    bus_queries.reserve(queries_count);
+    std::vector<std::pair<std::string, std::string>> stop_distances;
+    stop_distances.reserve(queries_count);
+
+    std::string query;
+    for (int id = 0; id < queries_count; ++id) {
+        std::getline(input_stream, query);
+        if (query.substr(0, 4) == "Stop"s) {
+            auto [stop, is_store_query] = InputBusStop(query);
+            if (is_store_query)
+                stop_distances.emplace_back(stop.name, std::move(query));
+            catalogue.AddStop(std::move(stop));
+        } else if (query.substr(0, 3) == "Bus"s) {
+            bus_queries.emplace_back(std::move(query));
+        }
+    }
+    for (const auto& [stop_from, query] : stop_distances) {
+        for (auto [stop_to, distance] : DistBetStops(query))
+            catalogue.AddDistance(stop_from, stop_to, distance);
+    }
+
+    for (const auto& bus_query : bus_queries)
+        catalogue.AddBus(InputBusRoute(bus_query));
+
+    input_stream >> queries_count;
+    input_stream.get();
+    for (int id = 0; id < queries_count; ++id) {
+        std::getline(input_stream, query);
+        if (query.substr(0, 3) == "Bus"s) {
+            std::string_view bus_number = ReqBusStat(query);
+
+            if (auto bus_statistics = catalogue.BusStat(bus_number)) {
+                std::cout << *bus_statistics << '\n';
+            } else {
+                std::cout << "Bus " << bus_number << ": not found\n";      
             }
-        }
- 
-        for (auto stop : stops) {
-            catalogue.add_stop(stop::parse_stop(stop));
-        }
- 
-        for (auto stop : stops) {
-            catalogue.add_distance(distance::parse_distances(stop, catalogue));
-        }
- 
-        for (auto bus : buses) {
-            catalogue.add_bus(bus::parse_bus(bus, catalogue));
+        } else if (query.substr(0, 4) == "Stop"s) {
+            std::string_view stop_name = BusSearchToReq(query);
+            auto* buses = catalogue.GetBusStop(stop_name);
+
+            PrintBusStop(std::cout, stop_name, buses);
         }
     }
 }
-    
-}//end namespace detail
-}//end namespace transport_catalogue
+}  // namespace catalog::input_utils
