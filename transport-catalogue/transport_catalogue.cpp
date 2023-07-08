@@ -5,15 +5,12 @@
 #include <numeric>
 
 namespace catalog {
-
-std::ostream& operator<<(std::ostream& os, const BusStatistics& bus_info) {
-    os << "Bus " << bus_info.number << ": " << bus_info.stops_count << " stops on route, "
-       << bus_info.unique_stops_count << " unique stops, ";
-    os << bus_info.rout_length << " route length, ";
-    os << std::setprecision(6) << bus_info.curvature << " curvature";
-    return os;
+    
+size_t Bus::GetUniqueStopsCount() const {
+    std::set<std::string_view> unique_stops(stop_names.begin(), stop_names.end());
+    return unique_stops.size();
 }
-
+    
 size_t Bus::GetStopsCount() const {
     return (type == RouteType::CIRCLE) ? stop_names.size() : 2 * stop_names.size() - 1;
 }
@@ -24,12 +21,12 @@ size_t Bus::GetStopsCount() const {
 Словарь stops_ обновляется путем вставки пары ключ-значение с именем остановки в качестве ключа и указателем на вставленную остановку в качестве значения.
 Словарь buses_through_stop_ обновляется путем установки пары ключ-значение с именем остановки в качестве ключа и пустым std::set<std::string_view> в качестве значения
 */
-  void TransportCatalogue::AddStop(Stop stop) {
+ void TransportCatalogue::AddStop(Stop&& stop) {
     auto position = stops_storage_.insert(stops_storage_.begin(), std::move(stop));
        const Stop* inserted_stop = &(*position);
              stops_.insert({inserted_stop->name, inserted_stop});
     buses_through_stop_.emplace(inserted_stop->name, std::set<std::string_view>());
-}  
+} 
        
 //тут остановки уже все пропарсены (в теле функции) - получим указатели на остановки 
 void TransportCatalogue::AddDistance(std::string_view stop_from, std::string_view stop_to, int distance) {
@@ -41,7 +38,7 @@ void TransportCatalogue::AddDistance(std::string_view stop_from, std::string_vie
     for (auto& stop : modified_bus.stop_names) {   // Анализируем и модифицируем остановки
             stop = stops_.find(stop)->first;
     }
-    modified_bus.unique_stops = {modified_bus.stop_names.begin(), modified_bus.stop_names.end()};
+    //modified_bus.unique_stops = {modified_bus.stop_names.begin(), modified_bus.stop_names.end()};
     buses_storage_.insert(buses_storage_.begin(), std::move(modified_bus));  // Вставляем модифицированный автобус в хранилище
         const Bus* inserted_bus = &(*buses_storage_.begin());
     buses_.insert({inserted_bus->number, inserted_bus});
@@ -50,17 +47,17 @@ void TransportCatalogue::AddDistance(std::string_view stop_from, std::string_vie
     }
 }
     
-std::optional<BusStatistics> TransportCatalogue::BusStat(std::string_view bus_number) const {
+std::optional<BusStatistics> TransportCatalogue::GetBusStatistics(std::string_view bus_number) const {
     if (buses_.count(bus_number) == 0)
-            return std::nullopt;
+        return std::nullopt;
     const Bus* bus_info = buses_.at(bus_number);
     BusStatistics result;
     result.number = bus_info->number;
     result.stops_count = bus_info->GetStopsCount();
-    result.unique_stops_count = bus_info->unique_stops.size();
+    result.unique_stops_count = bus_info->GetUniqueStopsCount();
     result.rout_length = AllRouteLen(bus_info);
     result.curvature = static_cast<double>(result.rout_length) / GeoLenCal(bus_info);
-        return result;
+    return result;
 }
 
 /*если не нашли куда, то ищем откуда 
