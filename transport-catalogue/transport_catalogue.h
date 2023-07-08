@@ -22,11 +22,10 @@ struct Bus {
     std::string number;
     RouteType type;
     std::vector<std::string_view> stop_names;
-    std::set<std::string_view> unique_stops;
 
- size_t GetStopsCount() const;
+    size_t GetStopsCount() const;
+    size_t GetUniqueStopsCount() const;
 };
-
 struct Stop {
     std::string name;
     geo::Coordinates point;
@@ -52,18 +51,16 @@ struct BusStatistics {
     double curvature{0.};
 };
 
-std::ostream& operator<<(std::ostream& os, const BusStatistics& statistics);
-
 class TransportCatalogue {
 public:  
     TransportCatalogue() = default;
 
 public:   
-    void AddStop(Stop stop);
+    void AddStop(Stop&& stop);
     void AddBus(Bus bus);
     void AddDistance(std::string_view stop_from, std::string_view stop_to, int distance);
 
-     std::optional<BusStatistics> BusStat(std::string_view bus_number) const;
+     std::optional<BusStatistics> GetBusStatistics(std::string_view bus_number) const;
        const std::set<std::string_view>* GetBusStop(std::string_view stop_name) const;
 
 private:   
