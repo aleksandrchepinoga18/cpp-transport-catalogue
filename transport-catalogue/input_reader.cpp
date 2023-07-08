@@ -68,16 +68,14 @@ Bus InputBusRoute(std::string_view text) {
         result.stop_names.push_back(text.substr(stop_begin, stop_end - stop_begin));
         stop_begin = (stop_end == std::string_view::npos) ? stop_end : stop_end + razdelitel_stops.size();
     }
-            result.unique_stops = {result.stop_names.begin(), result.stop_names.end()};
+           // result.unique_stops = {result.stop_names.begin(), result.stop_names.end()};
         return result;
 }
-
-void TransportRequest(std::istream& input_stream) {
-    TransportCatalogue catalogue;
-
+//отвечает за заполнение TransportCatalogue данными из входного потока input_stream
+void TransportRequest(std::istream& input_stream, TransportCatalogue& catalogue) {
     int queries_count{0};
     input_stream >> queries_count;
-    input_stream.get();
+     input_stream.get();
 
     std::vector<std::string> bus_queries;
     bus_queries.reserve(queries_count);
@@ -87,12 +85,12 @@ void TransportRequest(std::istream& input_stream) {
     std::string query;
     for (int id = 0; id < queries_count; ++id) {
         std::getline(input_stream, query);
-        if (query.substr(0, 4) == "Stop"s) {
+        if (query.substr(0, 4) == "Stop") {
             auto [stop, is_store_query] = InputBusStop(query);
             if (is_store_query)
                 stop_distances.emplace_back(stop.name, std::move(query));
             catalogue.AddStop(std::move(stop));
-        } else if (query.substr(0, 3) == "Bus"s) {
+        } else if (query.substr(0, 3) == "Bus") {
             bus_queries.emplace_back(std::move(query));
         }
     }
@@ -103,25 +101,6 @@ void TransportRequest(std::istream& input_stream) {
 
     for (const auto& bus_query : bus_queries)
         catalogue.AddBus(InputBusRoute(bus_query));
-
-    input_stream >> queries_count;
-    input_stream.get();
-    for (int id = 0; id < queries_count; ++id) {
-        std::getline(input_stream, query);
-        if (query.substr(0, 3) == "Bus"s) {
-            std::string_view bus_number = ReqBusStat(query);
-
-            if (auto bus_statistics = catalogue.BusStat(bus_number)) {
-                std::cout << *bus_statistics << '\n';
-            } else {
-                std::cout << "Bus " << bus_number << ": not found\n";      
-            }
-        } else if (query.substr(0, 4) == "Stop"s) {
-            std::string_view stop_name = BusSearchToReq(query);
-            auto* buses = catalogue.GetBusStop(stop_name);
-
-            PrintBusStop(std::cout, stop_name, buses);
-        }
-    }
 }
+    
 }  // namespace catalog::input_utils
