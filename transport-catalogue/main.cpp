@@ -8,5 +8,6 @@ using namespace std;
 
 int main() {     
 catalog::TransportCatalogue catalogue;
-catalog::input_utils::TransportRequest(std::cin); 
+catalog::input_utils::TransportRequest(std::cin, catalogue);
+catalog::output_utils::ParseTransportRequest(std::cin, catalogue);
 } 
