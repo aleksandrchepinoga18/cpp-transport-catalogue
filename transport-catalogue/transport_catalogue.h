@@ -12,7 +12,7 @@
 
 #include "geo.h"
 
-using ToStopsRoutes = std::vector<std::pair<std::string_view, int>>;
+using ToStopsRoutes = std::vector<std::pair<std::string_view, int>>;  
 
 namespace catalog {
 
@@ -56,7 +56,7 @@ public:
     TransportCatalogue() = default;
 
 public:   
-    void AddStop(Stop&& stop);
+    void AddStop(const Stop&& stop);
     void AddBus(Bus bus);
     void AddDistance(std::string_view stop_from, std::string_view stop_to, int distance);
 
