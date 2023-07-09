@@ -21,7 +21,7 @@ size_t Bus::GetStopsCount() const {
 Словарь stops_ обновляется путем вставки пары ключ-значение с именем остановки в качестве ключа и указателем на вставленную остановку в качестве значения.
 Словарь buses_through_stop_ обновляется путем установки пары ключ-значение с именем остановки в качестве ключа и пустым std::set<std::string_view> в качестве значения
 */
- void TransportCatalogue::AddStop(Stop&& stop) {
+ void TransportCatalogue::AddStop(const Stop&& stop) {
     auto position = stops_storage_.insert(stops_storage_.begin(), std::move(stop));
        const Stop* inserted_stop = &(*position);
              stops_.insert({inserted_stop->name, inserted_stop});
