@@ -1,105 +1,170 @@
 #include "transport_catalogue.h"
 
 #include <execution>
-#include <iomanip>
 #include <numeric>
 
-namespace catalog {
-    
-size_t Bus::GetUniqueStopsCount() const {
-    std::set<std::string_view> unique_stops(stop_names.begin(), stop_names.end());
-    return unique_stops.size();
+namespace catalogue {
+
+void TransportCatalogue::AddStop(Stop stop) {
+    // Add stop logic
+    const auto position = stops_storage_.insert(stops_storage_.begin(), std::move(stop));
+    stops_.insert({position->name, std::make_shared<Stop>(*position)});
+    // Add stop for <stop-bus> correspondence
+    //  При вычислении коэффициентов масштабирования карты должны учитываться только те остановки, которые
+    // входят в какой-либо маршрут. Остановки, которые не входят ни в один из маршрутов, учитываться не должны.
+    buses_through_stop_.insert({position->name, {}});
 }
-    
-size_t Bus::GetStopsCount() const {
-    return (type == RouteType::CIRCLE) ? stop_names.size() : 2 * stop_names.size() - 1;
-}
-/*
-Функция принимает объект Stop по значению и перемещает его в вектор stops_storage_, используя std::move.
-Функция insert используется для вставки остановки в начало вектора stops_storage_. 
-Указатель на вставленную позицию - &(*position).
-Словарь stops_ обновляется путем вставки пары ключ-значение с именем остановки в качестве ключа и указателем на вставленную остановку в качестве значения.
-Словарь buses_through_stop_ обновляется путем установки пары ключ-значение с именем остановки в качестве ключа и пустым std::set<std::string_view> в качестве значения
-*/
- void TransportCatalogue::AddStop(const Stop&& stop) {
-    auto position = stops_storage_.insert(stops_storage_.begin(), std::move(stop));
-       const Stop* inserted_stop = &(*position);
-             stops_.insert({inserted_stop->name, inserted_stop});
-    buses_through_stop_.emplace(inserted_stop->name, std::set<std::string_view>());
-} 
-       
-//тут остановки уже все пропарсены (в теле функции) - получим указатели на остановки 
+
 void TransportCatalogue::AddDistance(std::string_view stop_from, std::string_view stop_to, int distance) {
+    //! На этом шаге мы предполагаем, что проанализированы ВСЕ остановки.
     distances_between_stops_.insert({{stops_.at(stop_from), stops_.at(stop_to)}, distance});
 }
-    
- void TransportCatalogue::AddBus(Bus bus) {
-    Bus modified_bus = std::move(bus); // Перемещаем автобус в модифицированный экземпляр
-    for (auto& stop : modified_bus.stop_names) {   // Анализируем и модифицируем остановки
-            stop = stops_.find(stop)->first;
+
+void TransportCatalogue::AddBus(Bus bus) {
+    //! На этом шаге мы предполагаем, что проанализированы ВСЕ остановки.
+    for (auto& stop : bus.stop_names) {
+        stop = stops_.find(stop)->first;
+        UpdateMinMaxStopCoordinates(stops_.at(stop)->point);
     }
-    //modified_bus.unique_stops = {modified_bus.stop_names.begin(), modified_bus.stop_names.end()};
-    buses_storage_.insert(buses_storage_.begin(), std::move(modified_bus));  // Вставляем модифицированный автобус в хранилище
-        const Bus* inserted_bus = &(*buses_storage_.begin());
-    buses_.insert({inserted_bus->number, inserted_bus});
-        for (std::string_view stop : inserted_bus->stop_names) {    // Добавляем автобус к остановкам
-                buses_through_stop_[stop].insert(inserted_bus->number);
-    }
+    bus.unique_stops = {bus.stop_names.begin(), bus.stop_names.end()};
+
+    const auto position = buses_storage_.insert(buses_storage_.begin(), std::move(bus));
+    buses_.insert({position->number, std::make_shared<Bus>(*position)});
+    ordered_bus_list_.emplace(position->number);
+
+    // Add stop for <stop-bus> correspondence
+    for (std::string_view stop : position->stop_names)
+        buses_through_stop_[stop].insert(position->number);
 }
-    
+
 std::optional<BusStatistics> TransportCatalogue::GetBusStatistics(std::string_view bus_number) const {
     if (buses_.count(bus_number) == 0)
         return std::nullopt;
-    const Bus* bus_info = buses_.at(bus_number);
+
+    auto bus_info = buses_.at(bus_number);
+
     BusStatistics result;
     result.number = bus_info->number;
     result.stops_count = bus_info->GetStopsCount();
-    result.unique_stops_count = bus_info->GetUniqueStopsCount();
+    result.unique_stops_count = bus_info->unique_stops.size();
     result.rout_length = AllRouteLen(bus_info);
     result.curvature = static_cast<double>(result.rout_length) / GeoLenCal(bus_info);
+
     return result;
 }
 
-/*если не нашли куда, то ищем откуда 
-Если расстояние найдено, оно возвращается. В противном случае функция извлекает расстояние, используя обратную пару остановок.*/
-int TransportCatalogue::AllRouteLen(const Bus* bus_info) const {
+int TransportCatalogue::AllRouteLen(const std::shared_ptr<Bus>& bus_info) const {
     auto get_route_length = [this](std::string_view from, std::string_view to) {
         auto key = std::make_pair(stops_.at(from), stops_.at(to));
+        // Если мы не нашли «от -> до», то ищем «до -> от»
         return (distances_between_stops_.count(key) > 0)
                    ? distances_between_stops_.at(key)
                    : distances_between_stops_.at({stops_.at(to), stops_.at(from)});
     };
-    int forward_route =
+
+    int forward_route = 
         std::transform_reduce(bus_info->stop_names.begin(), std::prev(bus_info->stop_names.end()),
                               std::next(bus_info->stop_names.begin()), 0, std::plus<>(), get_route_length);
     if (bus_info->type == RouteType::CIRCLE)
-        return forward_route;  // возврат прямого маршрута , если так, то ниже считаем двусторонний
+        return forward_route;   // возврат прямого маршрута , если так, то ниже считаем двусторонний
+  //иначе двусторонний маршрут - поэтому считаем расстояние по обратному пути и возвращаем его в ретарн 
     int backward_route =
         std::transform_reduce(bus_info->stop_names.rbegin(), std::prev(bus_info->stop_names.rend()),
                               std::next(bus_info->stop_names.rbegin()), 0, std::plus<>(), get_route_length);
-//иначе двусторонний маршрут - поэтому считаем расстояние по обратному пути и возвращаем его в ретарн 
-    return forward_route + backward_route; 
+    return forward_route + backward_route;
 }
-
 /*функция перебирает названия остановок в bus_info и вычисляет географическую длину путем суммирования расстояний между последовательными остановками */
-double TransportCatalogue::GeoLenCal(const Bus* bus_info) const {
-  double geographic_length = 0.0;
-    for (size_t i = 1; i < bus_info->stop_names.size(); ++i) {
-        std::string_view from = bus_info->stop_names[i - 1];
-        std::string_view to = bus_info->stop_names[i];
-        geographic_length += ComputeDistance(stops_.at(from)->point, stops_.at(to)->point);
-    }
-    //расчетная географическая протяженность умножается на 2, если тип автобуса не является кольцевым маршрутом
- return (bus_info->type == RouteType::CIRCLE) ? geographic_length : geographic_length * 2.0;
+double TransportCatalogue::GeoLenCal(const std::shared_ptr<Bus>& bus_info) const {
+    double geographic_length = std::transform_reduce(
+        std::next(bus_info->stop_names.begin()), bus_info->stop_names.end(), bus_info->stop_names.begin(), 0.,
+        std::plus<>(), [this](std::string_view from, std::string_view to) {
+            return ComputeDistance(stops_.at(from)->point, stops_.at(to)->point);
+        });
+//расчетная географическая протяженность умножается на 2, если тип автобуса не является кольцевым маршрутом
+    return (bus_info->type == RouteType::CIRCLE) ? geographic_length : geographic_length * 2.;
 }
 
-//извлекает набор имен автобусов, проходящих через заданную остановку
-const std::set<std::string_view>* TransportCatalogue::GetBusStop(std::string_view stop_name) const {
-    auto it = buses_through_stop_.find(stop_name);
-    if (it != buses_through_stop_.end()) {
-        return &it->second;
+void TransportCatalogue::UpdateMinMaxStopCoordinates(const geo::Coordinates& coordinates) {
+    coordinates_min_.lat = std::min(coordinates_min_.lat, coordinates.lat);
+    coordinates_min_.lng = std::min(coordinates_min_.lng, coordinates.lng);
+
+    coordinates_max_.lat = std::max(coordinates_max_.lat, coordinates.lat);
+    coordinates_max_.lng = std::max(coordinates_max_.lng, coordinates.lng);
+}
+
+const geo::Coordinates& TransportCatalogue::GetMinStopCoordinates() const {
+    return coordinates_min_;
+}
+
+const geo::Coordinates& TransportCatalogue::GetMaxStopCoordinates() const {
+    return coordinates_max_;
+}
+
+const std::set<std::string_view>& TransportCatalogue::GetOrderedBusList() const {
+    return ordered_bus_list_;
+}
+
+BusStopsStorage TransportCatalogue::GetFinalStops(std::string_view bus_name) const {
+    auto bus = buses_.at(bus_name);
+
+    std::vector<std::shared_ptr<Stop>> stops;
+
+    if (bus->stop_names.empty())
+        return std::make_pair(bus, stops);
+
+    if (bus->type == RouteType::CIRCLE) {
+        // В кольцевом маршруте первая остановка на маршруте считается конечной остановкой.
+        stops.emplace_back(stops_.at(bus->stop_names.front()));
+    } else if (bus->type == RouteType::TWO_DIRECTIONAL) {
+        //На некольцевом маршруте первая и последняя остановки маршрута считаются конечными остановками.
+        stops.emplace_back(stops_.at(bus->stop_names.front()));
+
+        if (bus->stop_names.front() != bus->stop_names.back())
+            stops.emplace_back(stops_.at(bus->stop_names.back()));
     }
+
+    return std::make_pair(bus, stops);
+}
+
+BusStopsStorage TransportCatalogue::GetRouteInfo(std::string_view bus_name, bool include_backward_way) const {
+    auto bus = buses_.at(bus_name);
+
+    std::vector<std::shared_ptr<Stop>> stops;
+    stops.reserve(bus->GetStopsCount());
+
+    // Forward way
+    for (std::string_view stop : bus->stop_names)
+        stops.emplace_back(stops_.at(stop));
+
+    // Backward way
+    if (include_backward_way && bus->type == catalogue::RouteType::TWO_DIRECTIONAL) {
+        for (auto stop = std::next(bus->stop_names.rbegin()); stop != bus->stop_names.rend(); ++stop)
+            stops.emplace_back(stops_.at(*stop));
+    }
+
+    return std::make_pair(std::move(bus), std::move(stops));
+}
+
+StopsStorage TransportCatalogue::GetAllStopsFromRoutes() const {
+    std::unordered_map<std::string_view, std::shared_ptr<Stop>> stops;
+
+    // Используйте только остановки, которые являются частью любого автобусного маршрута
+    
+    for (const auto& [_, bus] : buses_) {
+        for (std::string_view stop : bus->stop_names) {
+            if (stops.count(stop) == 0)
+                stops.emplace(stop, stops_.at(stop));
+        }
+    }
+
+    return {stops.begin(), stops.end()};
+}
+
+std::unique_ptr<std::set<std::string_view>> TransportCatalogue::GetBusStop(
+    std::string_view stop_name) const {
+    if (const auto position = buses_through_stop_.find(stop_name); position != buses_through_stop_.end())
+        return std::make_unique<std::set<std::string_view>>(position->second);
     return nullptr;
 }
 
-}  // namespace catalog
+}  // namespace catalogue
