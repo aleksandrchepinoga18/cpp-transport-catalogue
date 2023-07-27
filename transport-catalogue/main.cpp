@@ -1,13 +1,22 @@
 #include "transport_catalogue.h"
-#include "input_reader.h"
-#include "stat_reader.h"
-
-#include <iostream>
-
+#include "json_reader.h"
+#include "domain.h"
+#include "map_renderer.h"
+#include "request_handler.h"
+ 
 using namespace std;
+#include <cassert>
+#include <chrono>
+#include <fstream>
+#include <iostream>
+#include <string>
 
-int main() {     
-catalog::TransportCatalogue catalogue;
-catalog::input_utils::TransportRequest(std::cin, catalogue);
-catalog::output_utils::ParseTransportRequest(std::cin, catalogue);
-} 
+using namespace catalogue;
+
+int main() {
+
+        request::ProcessTransportCatalogueQuery(std::cin, std::cout);
+
+
+    return 0;
+}
