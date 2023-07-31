@@ -108,24 +108,33 @@ render::Label ParseLabelSettings(const json::Dict& settings, const std::string& 
     return {font_size, {offset_x, offset_y}};
 }
 
+    
+    
 svg::Color ParseColor(const json::Node& node) {
-    // Node с цветом может быть: string, rgb, rgba
-    if (node.IsString())
+    if (node.IsString()) {
         return node.AsString();
-
+    }
     const auto& array = node.AsArray();
-    uint8_t red = array.at(0).AsInt();
-    uint8_t green = array.at(1).AsInt();
-    uint8_t blue = array.at(2).AsInt();
+    if (array.size() >= 3) {
+        uint8_t red = array.at(0).AsInt();
+        uint8_t green = array.at(1).AsInt();
+        uint8_t blue = array.at(2).AsInt();
 
-    // Если в массиве всего 3 цвета - это egb
-    if (array.size() == 3)
-        return svg::Rgb(red, green, blue);
-
-    // Otherwise - this is rgba
-    double alpha = array.at(3).AsDouble();
-    return svg::Rgba(red, green, blue, alpha);
+        // Если в массиве всего 3 цвета - это rgb
+        if (array.size() == 3) {
+            return svg::Rgb(red, green, blue);
+        }
+        // Otherwise - this is rgba
+        if (array.size() >= 4) {
+            double alpha = array.at(3).AsDouble();
+            return svg::Rgba(red, green, blue, alpha);
+        }
+    }
+    // Возвращаем значение по умолчанию или выбрасываем ошибку
+    // в зависимости от требуемого поведения
+    throw std::runtime_error("Invalid color format");
 }
+
 
 render::UnderLayer ParseLayer(const json::Dict& settings) {
     render::UnderLayer layer;
@@ -138,6 +147,8 @@ render::UnderLayer ParseLayer(const json::Dict& settings) {
 
 }  // namespace
 
+    
+    
 TransportCatalogue ProcessBaseRequest(const json::Array& requests) {
     TransportCatalogue catalogue;
 
