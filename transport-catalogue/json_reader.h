@@ -18,4 +18,4 @@ render::Visualization ParseVisualizationSettings(const json::Dict& settings);
 json::Node MakeStatResponse(const catalogue::TransportCatalogue& catalogue, const json::Array& requests,
                             const render::Visualization& settings);
 
-}  // namespace request
+}  // namespace request 
