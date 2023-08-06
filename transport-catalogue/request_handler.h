@@ -11,4 +11,4 @@ namespace request {
 
 void ProcessTransportCatalogueQuery(std::istream& input, std::ostream& output);
 
-}  // namespace request
+}  // namespace request 
