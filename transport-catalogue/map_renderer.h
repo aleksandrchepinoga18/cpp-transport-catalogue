@@ -58,12 +58,12 @@ private:  // Fields
 /* MAP IMAGE RENDERED */
 
 /*
- * The map consists of four types of objects.
- * The order of their output:
- * - route lines
- * - route names
- * - circles indicating stops
- * - stop names
+* Карта состоит из четырех типов объектов.
+ * Порядок их вывода:
+ * - линии маршрута
+ * - названия маршрутов
+ * - кружки обозначающие остановки
+ * - названия остановок
  */
 
 class MapImageRenderer {
