@@ -167,4 +167,4 @@ std::unique_ptr<std::set<std::string_view>> TransportCatalogue::GetBusStop(
     return nullptr;
 }
 
-}  // namespace catalogue
+}  // namespace catalogue 
