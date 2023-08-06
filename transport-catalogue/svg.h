@@ -517,4 +517,4 @@ private:  // Fields
     svg::Point third_;
 };
 
-}  // namespace shapes
+}  // namespace shapes 
