@@ -1,5 +1,4 @@
 #include "request_handler.h"
-
 #include <string>
 
 namespace request {
@@ -7,24 +6,24 @@ namespace request {
 using namespace std::literals;
 using namespace catalogue;
 
+
+    // вариант упрощенный более понятный 
 void ProcessTransportCatalogueQuery(std::istream& input, std::ostream& output) {
-    const auto input_json = json::Load(input).GetRoot();
+    // Загружаем JSON-документ и получаем корневой узел
+    json::Document doc = json::Load(input);
+    const auto& input_json = doc.GetRoot().AsDict();
 
-    // Step 1. Формировать каталог на основе входных данных
-    const auto& base_requests = input_json.AsMap().at("base_requests"s).AsArray();
-    auto transport_catalogue = request::ProcessBaseRequest(base_requests);
+    // Формируем каталог на основе входных данных с помощью метода из json_reader.cpp
+    auto transport_catalogue = request::ProcessBaseRequest(input_json.at("base_requests").AsArray());
 
-    // Step 2. Разобрать настройки rendering 
-    const auto& render_settings = input_json.AsMap().at("render_settings"s).AsMap();
-    const auto& visualization_settings = request::ParseVisualizationSettings(render_settings);
+    // Разбираем настройки отображения с помощью метода из json_reader.cpp
+    auto visualization_settings = request::ParseVisualizationSettings(input_json.at("render_settings").AsDict());
 
-    // Step 3. Форма ответа
-    const auto& stat_requests = input_json.AsMap().at("stat_requests"s).AsArray();
-    auto response = request::MakeStatResponse(transport_catalogue, stat_requests, visualization_settings);
+    // Формируем ответ на основе каталога и запросов с помощью метода из json_reader.cpp
+    auto response = request::MakeStatResponse(transport_catalogue, input_json.at("stat_requests").AsArray(), visualization_settings);
 
-    json::Print(json::Document{std::move(response)}, output);
-    
+    // Выводим ответ в формате JSON
+    json::Print(json::Document(std::move(response)), output);
 }
-
+    
 }  // namespace request
-
