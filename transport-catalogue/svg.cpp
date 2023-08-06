@@ -270,7 +270,7 @@ void Star::Draw(svg::ObjectContainer& container) const {
 }
 
 void Snowman::Draw(svg::ObjectContainer& container) const {
-    // Top circle
+    // Top circle 
     svg::Point current_center{head_center_.x, head_center_.y};
     double current_radius{head_radius_};
     auto top = svg::Circle().SetCenter(current_center).SetRadius(current_radius);
