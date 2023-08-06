@@ -73,4 +73,4 @@ private:  // Fields
     std::set<std::string_view> ordered_bus_list_;
 };
 
-}  // namespace catalogue
+}  // namespace catalogue 
