@@ -225,4 +225,4 @@ std::string RenderTransportMap(const catalogue::TransportCatalogue& catalogue, c
     return ss.str();
 }
 
-}  // namespace render
+}  // namespace render 
