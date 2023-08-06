@@ -45,4 +45,4 @@ struct BusStatistics {
 };
 
 std::ostream& operator<<(std::ostream& os, const BusStatistics& statistics);
-}  // namespace catalogue
+}  // namespace catalogue 
