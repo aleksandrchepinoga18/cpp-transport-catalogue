@@ -1,4 +1,5 @@
 #include "json_reader.h"
+#include "json_builder.h"
 
 #include <string>
 
@@ -18,7 +19,7 @@ std::pair<catalogue::Stop, bool> InputBusStop(const json::Dict& info) {
     stop.point.lat = info.at("latitude"s).AsDouble();
     stop.point.lng = info.at("longitude"s).AsDouble();
 
-    bool has_road_distances = !info.at("road_distances"s).AsMap().empty();
+    bool has_road_distances = !info.at("road_distances"s).AsDict().empty();
 
     return {std::move(stop), has_road_distances};
 }
@@ -40,50 +41,42 @@ Bus InputBusRoute(const json::Dict& info) {
     return bus;
 }
 
-json::Node MakeBusResponse(int request_id, const BusStatistics& statistics) {
-    json::Dict response;
+void MakeBusResponse(int request_id, const BusStatistics& statistics, json::Builder& response) {
+  //   нет необходимости использовать std::move(), потому что все типы справа тривиальны
 
-    // P.S. нет необходимости использовать std::move(), потому что все типы справа тривиальны
-    response.emplace("curvature"s, statistics.curvature);
-    response.emplace("request_id"s, request_id);
-    response.emplace("route_length"s, statistics.rout_length);
-    response.emplace("stop_count"s, static_cast<int>(statistics.stops_count));
-    response.emplace("unique_stop_count"s, static_cast<int>(statistics.unique_stops_count));
-
-    return response;
+    response.StartDict();
+    response.Key("curvature"s).Value(statistics.curvature);
+    response.Key("request_id"s).Value(request_id);
+    response.Key("route_length"s).Value(statistics.rout_length);
+    response.Key("stop_count"s).Value(static_cast<int>(statistics.stops_count));
+    response.Key("unique_stop_count"s).Value(static_cast<int>(statistics.unique_stops_count));
+    response.EndDict();
 }
 
-json::Node MakeStopResponse(int request_id, const std::set<std::string_view>& buses) {
-    json::Dict response;
+void MakeStopResponse(int request_id, const std::set<std::string_view>& buses, json::Builder& response) {
+    response.StartDict();
+    response.Key("request_id"s).Value(request_id);
 
-    response.emplace("request_id"s, request_id);
-
-    json::Array buses_array;
-    buses_array.reserve(buses.size());
+    response.Key("buses"s).StartArray();
     for (std::string_view bus : buses)
-        buses_array.emplace_back(std::string(bus));
+        response.Value(std::string(bus));
+    response.EndArray();
 
-    response.emplace("buses"s, std::move(buses_array));
-
-    return response;
+    response.EndDict();
 }
 
-json::Node MakeErrorResponse(int request_id) {
-    json::Dict response;
-
-    response.emplace("request_id"s, request_id);
-    response.emplace("error_message"s, "not found"s);
-
-    return response;
+void MakeErrorResponse(int request_id, json::Builder& response) {
+    response.StartDict();
+    response.Key("request_id"s).Value(request_id);
+    response.Key("error_message"s).Value("not found"s);
+    response.EndDict();
 }
 
-json::Node MakeMapImageResponse(int request_id, const std::string& image) {
-    json::Dict response;
-
-    response.emplace("request_id"s, request_id);
-    response.emplace("map"s, image);
-
-    return response;
+void MakeMapImageResponse(int request_id, const std::string& image, json::Builder& response) {
+    response.StartDict();
+    response.Key("request_id"s).Value(request_id);
+    response.Key("map"s).Value(image);
+    response.EndDict();
 }
 
 /* METHODS FOR MAP IMAGE RENDERING */
@@ -147,7 +140,8 @@ render::UnderLayer ParseLayer(const json::Dict& settings) {
 
 }  // namespace
 
-    
+
+//====================================================================================================
     
 TransportCatalogue ProcessBaseRequest(const json::Array& requests) {
     TransportCatalogue catalogue;
@@ -160,8 +154,8 @@ TransportCatalogue ProcessBaseRequest(const json::Array& requests) {
     requests_ids_with_buses.reserve(requests.size());
 
     // Шаг 1. Сохраните все остановки в каталоге и отметьте заявки, которые необходимо обработать позже
-    for (int id = 0; id != requests.size(); ++id) {
-        const auto& request_dict_view = requests.at(id).AsMap();
+    for (int id = 0; id != static_cast<int>(requests.size()); ++id) {
+        const auto& request_dict_view = requests.at(id).AsDict();
 
         if (request_dict_view.at("type"s) == "Stop"s) {
             auto [stop, has_road_distances] = InputBusStop(request_dict_view);
@@ -176,16 +170,16 @@ TransportCatalogue ProcessBaseRequest(const json::Array& requests) {
 
     // второй шаг - рассточние между остановками 
     for (int id : requests_ids_with_road_distances) {
-        const auto& request_dict_view = requests.at(id).AsMap();
-
+        const auto& request_dict_view = requests.at(id).AsDict();
+        
         std::string_view stop_from = request_dict_view.at("name"s).AsString();
-        for (const auto& [stop_to, distance] : request_dict_view.at("road_distances"s).AsMap())
+       for (const auto& [stop_to, distance] : request_dict_view.at("road_distances"s).AsDict())
             catalogue.AddDistance(stop_from, stop_to, distance.AsInt());
     }
 
     // Шаг 3. Добавьте информацию о маршрутах автобусов через остановки
     for (int id : requests_ids_with_buses) {
-        const auto& request_dict_view = requests.at(id).AsMap();
+        const auto& request_dict_view = requests.at(id).AsDict();
         catalogue.AddBus(InputBusRoute(request_dict_view));
     }
 
@@ -218,11 +212,11 @@ render::Visualization ParseVisualizationSettings(const json::Dict& settings) {
 
 json::Node MakeStatResponse(const TransportCatalogue& catalogue, const json::Array& requests,
                             const render::Visualization& settings) {
-    json::Array response;
-    response.reserve(requests.size());
+    auto response = json::Builder();
+    response.StartArray();
 
     for (const auto& request : requests) {
-        const auto& request_dict_view = request.AsMap();
+        const auto& request_dict_view = request.AsDict();
 
         int request_id = request_dict_view.at("id"s).AsInt();
         std::string type = request_dict_view.at("type"s).AsString();
@@ -232,24 +226,25 @@ json::Node MakeStatResponse(const TransportCatalogue& catalogue, const json::Arr
             name = request_dict_view.at("name"s).AsString();
 
             if (auto bus_statistics = catalogue.GetBusStatistics(name)) {
-                response.emplace_back(MakeBusResponse(request_id, *bus_statistics));
+                MakeBusResponse(request_id, *bus_statistics, response);
             } else {
-                response.emplace_back(MakeErrorResponse(request_id));
+                MakeErrorResponse(request_id, response);
             }
         } else if (type == "Stop"s) {
             name = request_dict_view.at("name"s).AsString();
             if (auto buses = catalogue.GetBusStop(name)) {
-                response.emplace_back(MakeStopResponse(request_id, *buses));
+                MakeStopResponse(request_id, *buses, response);
             } else {
-                response.emplace_back(MakeErrorResponse(request_id));
+                MakeErrorResponse(request_id, response);
             }
         } else if (type == "Map"s) {
             std::string image = RenderTransportMap(catalogue, settings);
-            response.emplace_back(MakeMapImageResponse(request_id, image));
+            MakeMapImageResponse(request_id, image, response);
         }
     }
 
-    return response;
+    response.EndArray();
+    return std::move(response.Build());
 }
 
 }  // namespace request
